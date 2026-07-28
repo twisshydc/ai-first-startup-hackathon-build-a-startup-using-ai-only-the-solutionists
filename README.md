@@ -27,12 +27,7 @@ Build a real startup product using AI-first development workflows.
 │   ├── research/
 │   └── decisions/
 ├── src/
-│   ├── components/
-│   ├── utils/
-│   └── main.js
 └── tests/
-    ├── unit/
-    └── integration/
 ```
 
 We use:
