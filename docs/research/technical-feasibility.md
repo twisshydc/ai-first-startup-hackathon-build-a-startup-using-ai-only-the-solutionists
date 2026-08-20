@@ -1,499 +1,505 @@
-# Technical Feasibility Report — Prospect Research & Sales Intelligence MVP
+# Technical Feasibility Report — The Solutionists
 
-**Project:** The Solutionists  
-**Issue:** #4 — Validate technical feasibility  
-**Status:** Feasible for MVP  
-**Recommendation:** Build a focused, evidence-first prospect research workflow rather than a full sales automation platform.
+**Issue:** #4 — Validate Technical Feasibility  
+**Product Direction:** AI Revenue / Sales Intelligence  
+**Phase:** MVP Validation  
+**Status:** **Technically feasible, with data quality and provider constraints**
 
 ---
 
 ## 1. Executive Decision
 
-The proposed MVP is **technically feasible with currently available APIs and models**.
+### Verdict: YES — the proposed MVP is technically feasible.
 
-The strongest architecture is:
+The current product hypothesis is:
+
+> Given a company's Ideal Customer Profile (ICP), discover relevant companies, research them using verifiable evidence, qualify and rank them, enrich relevant contacts, and prepare personalised outreach.
+
+The core workflow can be built today using existing web-search, data-enrichment, LLM, database, and web-application infrastructure.
+
+The important constraint is that **the MVP should not attempt to become a fully autonomous sales platform**.
+
+The first version should prove one thing:
+
+> **Can we consistently identify a small number of high-quality prospects and explain why they are worth contacting?**
+
+The hardest problems are not model training or frontend development. They are:
+
+1. Data quality and freshness
+2. Evidence-grounded AI decisions
+3. Provider/API limits and cost
+4. Company deduplication and identity resolution
+5. Contact-data availability
+6. Data licensing, privacy, and permitted access
+7. Measuring whether the ranking is actually useful
+
+---
+
+# 2. MVP Scope
+
+## 2.1 User Input
+
+The user provides an ICP in natural language.
+
+Example:
 
 ```text
-User ICP
-  ↓
-ICP → structured search criteria
-  ↓
-Prospect / company discovery
-  ↓
-Website + jobs + news + public-data research
-  ↓
-Entity resolution + deduplication
-  ↓
-AI qualification + evidence extraction
-  ↓
-Lead scoring
-  ↓
-Research brief
-  ↓
-Email/contact enrichment
-  ↓
-Personalised outreach draft
+B2B SaaS companies in the US with 50–500 employees
+that are currently hiring sales or customer-success roles.
 ```
 
-### Recommended MVP stack
-
-| Layer | Recommendation | Why |
-|---|---|---|
-| Web discovery/research | **Tavily** | Search + extraction designed for AI workflows; simple credit model |
-| Alternative research/search | **Exa** | Strong AI search and company/people research; useful if startup credits are available |
-| Company/contact discovery | **Hunter Discover** | Company discovery is free on its Data Platform API |
-| Email discovery | **Hunter Email Finder / Domain Search** | Clear API, verification, confidence scores, and public-source provenance |
-| Public-company facts | **SEC EDGAR APIs** | Official, free, no API key |
-| AI reasoning | **GPT-5 mini** | Good fit for high-volume structured classification and summarisation |
-| Database | **PostgreSQL** | Reliable relational model for companies, prospects, evidence and scores |
-| Backend | **Python + FastAPI** | Fast to build and well suited to data/AI workflows |
-| Async jobs | **Redis + Celery/RQ** or a simple job queue | Prevent long research requests from blocking the API |
-| Frontend | **Next.js** | Fast dashboard/prototype development |
-| Initial deployment | **Vercel + managed Postgres + backend host** | Keep infrastructure simple |
-
-**Important:** Apollo is useful technically, but it should **not be the core data provider for this MVP without confirming the applicable commercial/API agreement.** Apollo's current API terms restrict third-party integrations and prohibit using the API to replicate or compete with Apollo products unless authorized. Their developer FAQ also says sharing/exposing/reselling Apollo data to non-Apollo users requires a custom contract. See the legal section below.
-
----
-
-# 2. What the MVP Should Actually Do
-
-Do not attempt to build "an AI sales platform."
-
-Build one very clear workflow:
-
-> **Give us an ICP → get a ranked list of companies with evidence explaining why each company is a good prospect.**
-
-For example:
-
-### Input
-
-```text
-We sell an AI customer-support product.
-
-Find:
-- B2B SaaS companies
-- 20–500 employees
-- US/UK
-- likely to have a customer-support team
-- recently growing or hiring
-- likely to benefit from AI automation
-```
-
-### Output
-
-```text
-1. Acme Software
-   ICP Score: 91/100
-
-   Why:
-   ✓ B2B SaaS
-   ✓ ~120 employees
-   ✓ Hiring customer-support roles
-   ✓ Has a large support/customer-success function
-   ✓ Website describes a high-volume support workflow
-
-   Evidence:
-   - Company website
-   - Careers page
-   - Job posting
-   - Recent company/news page
-
-   Recommended contact:
-   VP Customer Success
-
-   Outreach angle:
-   "You appear to be expanding your support team while..."
-```
-
-This is much more defensible than asking an LLM to invent a lead list.
-
----
-
-# 3. Data Sources
-
-## Tier 1 — Use First
-
-### 3.1 Company websites
-
-**Source:** The prospect's own website.
-
-Use it for:
-
-- Company description
-- Product/service
-- Industry
-- Target customers
-- Pricing
-- Locations
-- Contact pages
-- Careers
-- Customer stories
-- Product changes
-- Technology clues
-
-This should be the **highest-priority evidence source** because it is directly controlled by the company.
-
----
-
-### 3.2 Tavily
-
-Tavily provides AI-oriented web search, extraction, mapping and crawling.
-
-Current pricing includes:
-
-- 1,000 free API credits/month
-- Pay-as-you-go at $0.008/credit
-- Basic search: 1 credit/request
-- Advanced search: 2 credits/request
-- Extraction is also credit-based
-
-For an MVP, use Tavily mainly for:
-
-```text
-search → identify relevant pages
-extract → retrieve page content
-```
-
-Do not crawl the entire internet. Search only for evidence relevant to the ICP.
-
-Source:
-
-https://www.tavily.com/pricing
-
-https://docs.tavily.com/documentation/api-credits
-
----
-
-### 3.3 Hunter
-
-Hunter is a strong fit for the **contact-enrichment part** of the MVP.
-
-Useful APIs:
-
-- Discover
-- Domain Search
-- Email Finder
-- Email Verifier
-- Enrichment
-
-Hunter's current documentation says its Discover API is free of charge on Data Platform plans. Domain Search costs 1 search credit for 1–10 returned emails, and Email Finder costs 1 search credit per email found.
-
-Hunter also explicitly documents use of its API in third-party applications/SaaS.
-
-Use it **after** a company has passed the qualification stage.
-
-Do not spend enrichment credits on every discovered company.
-
-Source:
-
-https://hunter.io/api-documentation
-
-https://help.hunter.io/en/articles/12149400-hunter-api-for-data-plans
-
-https://hunter.io/pricing
-
----
-
-### 3.4 SEC EDGAR
-
-For US public companies, SEC EDGAR provides official submissions and XBRL company facts through APIs without authentication/API keys.
-
-Useful signals:
-
-- Revenue
-- Financial statements
-- Filings
-- Company identifiers
-- Filing dates
-- Recent 10-K/10-Q/8-K activity
-
-This is especially useful for larger prospects.
-
-Source:
-
-https://www.sec.gov/search-filings/edgar-application-programming-interfaces
-
----
-
-## Tier 2 — Add Later
-
-### 3.5 Exa
-
-Exa is a strong alternative/addition for AI-oriented web research.
-
-Current pricing includes:
-
-- $20 signup credits
-- $10/month free tier
-- Search: $7/1,000 requests
-- Contents: $1/1,000 pages
-- Deep Search: $12–15/1,000 requests
-- Startup/education grants may provide additional credits
-
-Exa is particularly interesting if the team gets its startup grant.
-
-Source:
-
-https://exa.ai/pricing
-
----
-
-### 3.6 Public government/company registries
-
-Where useful, integrate official registries for the target geography.
-
-Examples:
-
-- SEC EDGAR — United States
-- Companies House — United Kingdom
-- Other national business registries where API access and licensing permit
-
-These should be treated as structured verification sources, not the only discovery mechanism.
-
----
-
-### 3.7 Google Places
-
-Only use Google Places when location is actually part of the ICP.
-
-For example:
-
-```text
-Find dental clinics in Bangalore
-Find logistics companies in Mumbai
-Find restaurants with multiple locations
-```
-
-It should **not** be the primary source for generic B2B SaaS prospect discovery.
-
-Google's current pricing is SKU-based and field selection affects billing, so unnecessary fields should be avoided.
-
-Source:
-
-https://developers.google.com/maps/billing-and-pricing/pricing-india
-
----
-
-# 4. Data Sources We Should NOT Make Core Dependencies
-
-## LinkedIn scraping
-
-Do **not** build the MVP around scraping LinkedIn.
-
-LinkedIn's current User Agreement prohibits using software/scripts/crawlers to scrape or copy the service and also restricts unauthorized automated access.
-
-LinkedIn's crawling terms state that automated crawling requires express permission.
-
-Therefore:
-
-```text
-BAD:
-Our system → browser bot → LinkedIn → scrape profiles
-```
-
-Prefer:
-
-```text
-Our system → licensed/API provider
-                    ↓
-              structured data
-```
-
-Source:
-
-https://www.linkedin.com/legal/user-agreement
-
-https://www.linkedin.com/legal/crawling-terms
-
----
-
-## Apollo as a hidden backend
-
-Apollo has excellent technical capabilities for company/person search and enrichment, but its current API terms are a major consideration.
-
-Apollo states that:
-
-- API access is licensed primarily for internal business purposes unless otherwise agreed.
-- Third-party API credentials cannot be used without authorization.
-- Integrating the API with your own product/service requires authorization.
-- API use cannot be used to replicate or compete with Apollo products.
-- Sharing/exposing/reselling data to non-Apollo users requires a custom contract.
-
-Therefore:
-
-### For the hackathon prototype
-
-Apollo can be investigated as a **potential future licensed provider**.
-
-### For the core MVP architecture
-
-Do not make the product dependent on Apollo unless the team confirms the required authorization/contract.
-
-Sources:
-
-https://www.apollo.io/terms/api
-
-https://docs.apollo.io/docs/developer-faqs
-
-https://docs.apollo.io/docs/api-pricing
-
----
-
-# 5. AI Architecture
-
-The AI should **not** be responsible for discovering everything.
-
-Use deterministic data collection first.
-
-```text
-SEARCH / API
-    ↓
-RAW EVIDENCE
-    ↓
-NORMALIZATION
-    ↓
-LLM EXTRACTION
-    ↓
-SCORING
-    ↓
-GENERATED SUMMARY
-```
-
-## Model responsibilities
-
-### Task A — ICP parsing
-
-Convert:
-
-```text
-B2B SaaS companies in US with 50–500 employees
-that are hiring sales people
-```
-
-into structured criteria:
+The system converts this into structured criteria:
 
 ```json
 {
   "business_model": "B2B SaaS",
-  "locations": ["US"],
-  "employees": {
+  "location": ["US"],
+  "employee_range": {
     "min": 50,
     "max": 500
   },
   "signals": [
-    "sales hiring"
+    "sales hiring",
+    "customer-success hiring"
   ]
 }
 ```
 
-### Task B — Evidence extraction
+---
 
-Give the model retrieved text and ask:
-
-```text
-Extract only claims supported by the supplied evidence.
-Return:
-- claim
-- evidence
-- source URL
-- confidence
-```
-
-### Task C — Qualification
-
-Example:
+## 2.2 MVP Workflow
 
 ```text
-Does this company match the ICP?
-
-Return:
-- score: 0–100
-- matched criteria
-- failed criteria
-- uncertain criteria
-- evidence IDs
+                 User ICP
+                    │
+                    ▼
+            ICP Normalisation
+                    │
+                    ▼
+            Prospect Discovery
+                    │
+                    ▼
+          Company Deduplication
+                    │
+                    ▼
+            Evidence Collection
+             ┌──────┼──────┐
+             ▼      ▼      ▼
+          Website  Jobs   Public Data
+             └──────┼──────┘
+                    ▼
+          AI Extraction + Qualification
+                    │
+                    ▼
+          Explainable Lead Scoring
+                    │
+                    ▼
+          Contact Enrichment (Top Leads)
+                    │
+                    ▼
+          Personalised Outreach Draft
+                    │
+                    ▼
+              User Review
 ```
-
-### Task D — Outreach angle
-
-Only generate an outreach angle from verified evidence.
-
-Never let the model invent:
-
-- funding
-- employee count
-- technology
-- customer names
-- business problems
-- job openings
-- personal details
 
 ---
 
-# 6. Lead Scoring
+# 3. What the MVP Should Produce
 
-Use a transparent score instead of a black-box "AI says this is good."
-
-Suggested MVP score:
+For every qualified company, the user should receive something similar to:
 
 ```text
-ICP Match             30 points
-Company Size          15 points
-Industry Match        15 points
-Intent/Growth Signals 20 points
-Pain Signal           10 points
-Contact Availability  10 points
---------------------------------
-Total                 100 points
-```
+Acme Software
 
-Example:
+ICP Score: 91/100
 
-```text
-Company: Acme
-
-ICP match             28/30
-Company size          13/15
-Industry              15/15
-Growth signals        18/20
-Pain signal            8/10
-Contact availability  10/10
---------------------------------
-Score                 92/100
-```
-
-### Critical rule
-
-Every score should have an explanation.
-
-Bad:
-
-```text
-AI score: 92
-```
-
-Good:
-
-```text
-92/100
+Why it qualifies:
+✓ B2B SaaS
+✓ US-based
+✓ Fits target company size
+✓ Relevant hiring signal
+✓ Evidence of a potential business need
 
 Evidence:
-- 100–200 employees
-- B2B SaaS
-- Hiring 4 customer-support roles
-- Recently launched enterprise plan
-- Support-heavy product
+• Company website
+• Careers page
+• Relevant job posting
+• Other permitted public/company sources
+
+Recommended contact:
+VP Customer Success
+
+Outreach angle:
+A short message based only on verified company evidence.
 ```
+
+The important product principle is:
+
+> **Every important AI-generated claim should be traceable to evidence.**
 
 ---
 
-# 7. Evidence Model
+# 4. Recommended Architecture
 
-This is one of the most important parts of the product.
+```text
+┌─────────────────────────────────────────────┐
+│                 Next.js UI                  │
+│  ICP Input → Prospect Table → Research UI  │
+└──────────────────────┬──────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────┐
+│                FastAPI Backend              │
+│ Auth / API / Jobs / Scoring / Orchestration │
+└───────────────┬───────────────┬─────────────┘
+                │               │
+                ▼               ▼
+        ┌──────────────┐  ┌──────────────┐
+        │ Job / Worker │  │ PostgreSQL   │
+        │ Queue        │  │              │
+        └──────┬───────┘  └──────────────┘
+               │
+      ┌────────┼─────────┐
+      ▼        ▼         ▼
+   Search   Enrichment  LLM
+   Provider Provider    Layer
+      │        │         │
+      ▼        ▼         ▼
+   Tavily    Hunter    GPT-5 mini
+      │
+      ▼
+ Public / Company Sources
+```
 
-Store evidence separately.
+### Why this architecture?
 
-Suggested schema:
+- Frontend remains independent from providers.
+- Long-running research does not block the API request.
+- External providers can be replaced.
+- Evidence and scores can be stored and audited.
+- AI is used for extraction and reasoning rather than being treated as the source of truth.
+
+---
+
+# 5. Recommended Technology Stack
+
+| Layer | Recommendation | Reason |
+|---|---|---|
+| Frontend | Next.js | Fast MVP dashboard development |
+| Backend | Python + FastAPI | Good fit for AI/data workflows |
+| Database | PostgreSQL | Structured company, evidence and scoring data |
+| Queue | Redis + background worker | Handles asynchronous research jobs |
+| LLM | GPT-5 mini | Cost-sensitive extraction, classification and generation |
+| Web research | Tavily | Search and web extraction |
+| Alternative research | Exa | Useful alternative for AI-oriented search |
+| Contact enrichment | Hunter | Email finding and verification |
+| Public US company data | SEC EDGAR | Official filings and XBRL data |
+| Deployment | Vercel + managed backend/database | Simple MVP deployment |
+
+The provider choices should remain behind interfaces so that the product is not permanently coupled to one vendor.
+
+---
+
+# 6. Data Sources
+
+## 6.1 Company Websites — Primary Source
+
+Company-owned websites should be treated as a primary evidence source.
+
+Useful signals include:
+
+- Company description
+- Product/service information
+- Industry
+- Target market
+- Locations
+- Careers
+- Job postings
+- Customer stories
+- Pricing
+- Product announcements
+
+The system should store the source URL and retrieval time for important evidence.
+
+---
+
+## 6.2 Tavily — Primary Web Research Provider
+
+Tavily provides search and extraction capabilities designed for AI applications.
+
+Current published pricing includes:
+
+- 1,000 API credits/month on the free Researcher plan
+- Pay-as-you-go pricing of $0.008 per credit
+- Higher-volume plans with additional credits and rate limits
+
+Reference: https://www.tavily.com/pricing
+
+For the MVP, Tavily can be used for:
+
+```text
+ICP
+ ↓
+Search queries
+ ↓
+Relevant pages
+ ↓
+Extract useful content
+ ↓
+Evidence passed to AI layer
+```
+
+Important: API-credit usage depends on the request type, so actual cost must be measured during the validation experiment.
+
+---
+
+## 6.3 Hunter — Contact Enrichment
+
+Hunter can be used after a company has already qualified.
+
+Relevant functionality includes:
+
+- Domain Search
+- Email Finder
+- Email Verification
+- Enrichment
+
+Hunter's API documentation states that Domain Search, Email Finder and enrichment calls consume credits according to the endpoint, and that API endpoints have rate limits.
+
+Reference: https://hunter.io/api-documentation
+
+Current pricing information:
+
+https://hunter.io/pricing
+
+### Architectural rule
+
+Do **not** enrich every discovered company.
+
+Use:
+
+```text
+1000 discovered
+      ↓
+Cheap filtering
+      ↓
+200 candidates
+      ↓
+Research
+      ↓
+50 qualified
+      ↓
+Contact enrichment
+      ↓
+Top prospects
+```
+
+This controls both cost and unnecessary processing of personal data.
+
+---
+
+## 6.4 Exa — Alternative / Secondary Research Provider
+
+Exa is another possible web-search and research provider.
+
+Its current pricing includes:
+
+- Search pricing based on requests
+- Page-content pricing
+- Deep Search
+- Agent-based research
+- Company and people search use cases
+
+Reference: https://exa.ai/pricing
+
+For the MVP, Exa should be evaluated against Tavily rather than automatically added as a second dependency.
+
+The team should choose based on:
+
+- Search relevance
+- Evidence quality
+- Cost per qualified company
+- Latency
+- Rate limits
+- Ease of integration
+
+---
+
+## 6.5 SEC EDGAR — Public Company Data
+
+For US public companies, SEC EDGAR provides APIs for submissions and extracted XBRL data.
+
+Reference:
+
+https://www.sec.gov/search-filings/edgar-application-programming-interfaces
+
+Potential signals include:
+
+- Company filings
+- Filing dates
+- Financial information
+- Corporate identifiers
+- Recent public-company events
+
+SEC data is especially useful for public companies but should not be treated as the primary source for the entire prospect universe.
+
+---
+
+# 7. AI Approach
+
+## 7.1 Retrieval First, Generation Second
+
+The LLM should not be asked:
+
+```text
+"Find good prospects and tell me why."
+```
+
+as a single unconstrained task.
+
+Instead:
+
+```text
+External Sources
+       ↓
+Retrieved Evidence
+       ↓
+Structured Extraction
+       ↓
+Qualification
+       ↓
+Scoring
+       ↓
+Explanation
+       ↓
+Outreach Draft
+```
+
+The model should reason **over retrieved evidence**.
+
+---
+
+## 7.2 Evidence Object
+
+A useful internal representation is:
+
+```json
+{
+  "claim": "Company is hiring customer-success employees",
+  "source_url": "https://example.com/careers",
+  "source_title": "Careers",
+  "retrieved_at": "2026-08-20T10:30:00Z",
+  "confidence": 0.94
+}
+```
+
+This allows the application to answer:
+
+> Why did the system give this company a high score?
+
+---
+
+## 7.3 Hallucination Control
+
+The system should explicitly prevent the model from inventing:
+
+- Funding information
+- Employee counts
+- Customers
+- Technologies
+- Job openings
+- Business problems
+- Contact information
+- Personal details
+
+If evidence is missing, the system should say:
+
+```text
+Unknown / insufficient evidence
+```
+
+rather than guessing.
+
+---
+
+# 8. Lead Scoring
+
+The first scoring system should be transparent.
+
+Recommended starting model:
+
+| Signal | Weight |
+|---|---:|
+| ICP Match | 30 |
+| Company Size | 15 |
+| Industry Match | 15 |
+| Intent / Growth Signals | 20 |
+| Problem/Pain Signal | 10 |
+| Contact Availability | 10 |
+| **Total** | **100** |
+
+Example:
+
+```text
+Acme Software — 92/100
+
+ICP Match              28/30
+Company Size           13/15
+Industry Match         15/15
+Intent Signals         18/20
+Pain Signal             8/10
+Contact Availability   10/10
+--------------------------------
+Total                   92/100
+```
+
+The exact weights should be validated experimentally rather than treated as final.
+
+---
+
+# 9. Company Identity and Deduplication
+
+A company may appear as:
+
+```text
+Acme Inc.
+Acme
+Acme Technologies
+acme.com
+www.acme.com
+```
+
+The primary identity should be based on a normalized domain where available.
+
+Example:
+
+```text
+https://www.acme.com/
+        ↓
+acme.com
+```
+
+Secondary matching can use:
+
+```text
+normalized company name + country
+```
+
+Contact identity should use normalized email where available.
+
+Deduplication is important because duplicate companies would:
+
+- Waste API credits
+- Distort ranking
+- Produce duplicate outreach
+- Make evaluation unreliable
+
+---
+
+# 10. Data Model
+
+A minimal schema:
 
 ```text
 companies
@@ -502,8 +508,8 @@ id
 name
 domain
 industry
-employee_range
 location
+employee_range
 created_at
 updated_at
 
@@ -521,16 +527,15 @@ evidence
 --------
 id
 company_id
-type
 claim
 source_url
 source_title
 retrieved_at
 confidence
-raw_text_hash
 
 scores
 ------
+id
 company_id
 icp_score
 size_score
@@ -543,420 +548,628 @@ explanation
 created_at
 ```
 
-This gives us:
-
-- traceability
-- reproducibility
-- debugging
-- easier scoring changes
-- better user trust
+The evidence table is especially important because it allows the team to inspect how the AI reached its conclusion.
 
 ---
 
-# 8. Deduplication
+# 11. Progressive Enrichment
 
-This will become a real technical problem.
+This is one of the most important cost-control decisions.
 
-The same company can appear as:
-
-```text
-Acme Inc.
-Acme
-Acme Technologies
-acme.com
-www.acme.com
-```
-
-Use:
-
-### Primary identity
-
-```text
-normalized_domain
-```
-
-### Secondary identity
-
-```text
-normalized_company_name + country
-```
-
-### Contact identity
-
-```text
-normalized_email
-```
-
-Do not rely only on company names.
-
----
-
-# 9. Caching and Cost Control
-
-The system should avoid repeatedly researching the same company.
-
-Use:
-
-```text
-domain → research cache
-URL → extraction cache
-company → enrichment cache
-```
-
-Example:
-
-```text
-User searches ICP #1
-      ↓
-Research Acme
-      ↓
-Cache Acme research
-
-User searches ICP #2
-      ↓
-Acme appears again
-      ↓
-Reuse cached evidence
-      ↓
-Only recalculate ICP score
-```
-
-This can reduce API costs dramatically.
-
----
-
-# 10. Estimated MVP API Cost
-
-These are **illustrative estimates**, not vendor quotes for the entire workflow.
-
-For 100 companies:
-
-### Web research
-
-Suppose:
-
-```text
-2 searches/company
-1 extraction/company
-```
-
-At roughly 3 basic Tavily credits/company:
-
-```text
-100 × 3 = 300 credits
-```
-
-At $0.008/credit:
-
-```text
-≈ $2.40
-```
-
-Actual cost will depend on search depth, extraction depth and how many URLs are processed.
-
-### Contact enrichment
-
-If we attempt one Hunter email lookup for 100 qualified contacts:
-
-```text
-≈ 100 search credits
-```
-
-Hunter's paid plans currently include substantially more credits than this, while its free tier can be useful for initial testing.
-
-### LLM
-
-Use a small/cost-efficient model for:
-
-- classification
-- extraction
-- scoring
-- summarisation
-
-Do not use a large model for every page.
-
-Use the larger model only when the reasoning task genuinely requires it.
-
----
-
-# 11. Cost Optimization Strategy
-
-The order of operations matters.
-
-### Expensive approach
+### Bad
 
 ```text
 1000 companies
- ↓
-LLM research
- ↓
-email enrichment
- ↓
-deep research
- ↓
-scoring
+      ↓
+Deep research
+      ↓
+Contact enrichment
+      ↓
+LLM generation
 ```
 
-### Better approach
+### Recommended
 
 ```text
-1000 discovered companies
- ↓
-cheap deterministic filters
- ↓
-200 companies
- ↓
-web research
- ↓
-100 qualified companies
- ↓
-contact enrichment
- ↓
-top 25
- ↓
-deep research + outreach
+1000 discovered
+      ↓
+Cheap deterministic filtering
+      ↓
+200 candidates
+      ↓
+Web research
+      ↓
+50 qualified
+      ↓
+Contact enrichment
+      ↓
+Top 20–25
+      ↓
+Deep research + outreach
 ```
 
-The system should use **progressive enrichment**.
+This reduces:
+
+- Search cost
+- LLM usage
+- Enrichment cost
+- Processing time
+- Unnecessary personal-data processing
 
 ---
 
-# 12. API Rate Limits
+# 12. Caching
 
-Every external provider should sit behind a provider abstraction.
+Research results should be cached.
 
 Example:
 
-```python
-class SearchProvider:
-    def search(self, query):
-        ...
-
-class EnrichmentProvider:
-    def find_email(self, name, domain):
-        ...
+```text
+company domain
+      ↓
+research cache
+      ↓
+existing evidence
 ```
 
-Then:
+If the same company is evaluated against a different ICP:
 
 ```text
-Tavily
-   ↓
-SearchProvider
-
-Exa
-   ↓
-SearchProvider
+Existing company research
+          ↓
+Reuse evidence
+          ↓
+Recalculate qualification
+          ↓
+New ICP score
 ```
 
-This prevents the application from becoming permanently coupled to one provider.
+This prevents repeatedly paying to research the same company.
 
-Implement:
-
-- retries
-- exponential backoff
-- timeout
-- rate limiting
-- caching
-- circuit breaking
-- provider fallback
-- request logging
-
-Never retry a failed API request infinitely.
+Evidence should still have a retrieval timestamp so that stale information can be detected.
 
 ---
 
-# 13. Legal / Data-Access Risks
+# 13. Provider Abstraction
 
-This is one of the biggest risks.
+External providers should not be called directly throughout the application.
 
-The product will process both:
+Recommended structure:
 
-### Company data
+```text
+providers/
+├── search/
+│   ├── base.py
+│   ├── tavily.py
+│   └── exa.py
+│
+├── enrichment/
+│   ├── base.py
+│   └── hunter.py
+│
+└── public_data/
+    └── sec.py
+```
 
-Usually lower risk.
+Application code should call an internal interface such as:
 
-Examples:
+```python
+research_provider.search(...)
+```
 
-- company name
-- website
-- industry
-- public company information
+instead of depending everywhere on:
 
-### Personal data
+```python
+tavily.search(...)
+```
 
-Higher risk.
+This makes it possible to replace a provider without rewriting the product.
 
-Examples:
+---
 
-- person's name
-- professional email
-- phone number
-- job title
-- social profile
-- other identifiers
+# 14. Reliability Requirements
 
-The team must understand the privacy requirements for the markets in which the product operates.
+External API calls should include:
 
-India's Digital Personal Data Protection Act, 2023 provides the statutory framework for processing digital personal data, and the Digital Personal Data Protection Rules, 2025 were notified in November 2025 with staged commencement provisions.
+- Request timeouts
+- Retries
+- Exponential backoff
+- Rate limiting
+- Request logging
+- Caching
+- Failure handling
+- Provider fallback where justified
 
-Do not treat "publicly visible on the internet" as automatically meaning "free to use for every purpose."
+Retries should be bounded.
 
-For the MVP:
+Long-running research should be asynchronous:
 
-- prefer licensed APIs
-- store source/provenance
-- minimize personal data
-- avoid unnecessary phone numbers
-- support deletion
-- support correction
-- keep retention limited
-- document data providers
-- provide a clear privacy policy before production launch
-- do not scrape sites that prohibit automated access
+```text
+User starts research
+        ↓
+Create job
+        ↓
+Queue
+        ↓
+Worker
+        ↓
+Search / research
+        ↓
+Extract evidence
+        ↓
+Score
+        ↓
+Store results
+        ↓
+Dashboard
+```
+
+The user should not have to keep an HTTP request open while the entire research pipeline runs.
+
+---
+
+# 15. Cost Feasibility
+
+The MVP is financially feasible for experimentation because the major providers offer free tiers or usage-based pricing.
+
+Current published examples:
+
+| Provider | Current published entry pricing |
+|---|---|
+| Tavily | 1,000 free API credits/month; $0.008/credit pay-as-you-go |
+| Hunter | Free plan available; paid plans and API credits available |
+| Exa | $20 signup credits and usage-based API pricing |
+| GPT-5 mini | $0.25 / 1M input tokens; $2 / 1M output tokens |
 
 Sources:
 
-https://www.indiacode.nic.in/handle/123456789/22037
+- https://www.tavily.com/pricing
+- https://hunter.io/pricing
+- https://exa.ai/pricing
+- https://developers.openai.com/api/docs/models/gpt-5-mini
+
+### Important
+
+These numbers are **provider prices, not our final product cost**.
+
+Actual cost depends on:
+
+- Number of companies discovered
+- Searches per company
+- Pages extracted
+- LLM tokens
+- Contact enrichment rate
+- Verification rate
+- Retry rate
+- Cache hit rate
+
+Therefore the team should measure cost per qualified prospect during validation.
+
+---
+
+# 16. Cost-Control Strategy
+
+The MVP should optimize for:
+
+```text
+Cost per qualified prospect
+```
+
+rather than:
+
+```text
+Cost per discovered company
+```
+
+Recommended controls:
+
+1. Cheap filtering first
+2. Research only promising candidates
+3. Enrich only qualified prospects
+4. Cache company research
+5. Limit search depth
+6. Limit LLM context to relevant evidence
+7. Avoid unnecessary retries
+8. Track provider usage per research job
+
+---
+
+# 17. API and Rate-Limit Risks
+
+Potential failures include:
+
+```text
+Search provider
+      ↓
+Rate limit
+      ↓
+429 / temporary failure
+```
+
+The system should respond with:
+
+```text
+Retry with backoff
+       ↓
+Retry limit reached?
+       ↓
+Record failure
+       ↓
+Continue other jobs
+```
+
+One provider failure should not destroy the entire research job.
+
+Provider-specific rate limits must be checked during implementation.
+
+---
+
+# 18. Data Freshness
+
+Prospect data becomes stale.
+
+Examples:
+
+- Employees change roles
+- Job postings close
+- Companies change websites
+- Contact emails become invalid
+- Companies are acquired
+- Business priorities change
+
+Therefore each evidence record should have:
+
+```text
+retrieved_at
+```
+
+and the system should distinguish:
+
+```text
+Verified recently
+Old evidence
+Unknown / stale
+```
+
+A future version can implement scheduled re-research.
+
+---
+
+# 19. Legal, Privacy and Data-Access Considerations
+
+This area requires special care before production use.
+
+The system may process:
+
+### Company information
+
+Examples:
+
+- Company name
+- Domain
+- Industry
+- Public business information
+
+### Personal data
+
+Examples:
+
+- Name
+- Professional email
+- Job title
+- Other identifiers
+
+For the MVP:
+
+- Prefer licensed APIs and permitted sources
+- Store provenance for important data
+- Minimize personal data collection
+- Do not collect fields that are unnecessary for the product
+- Provide deletion/correction mechanisms where required
+- Define retention rules
+- Document data providers
+- Review each provider's terms before integration
+
+India's Digital Personal Data Protection Rules, 2025 are now published by MeitY, so privacy and data-processing requirements need to be considered for an India-based product handling personal data.
+
+Reference:
 
 https://www.meity.gov.in/documents/act-and-policies/digital-personal-data-protection-rules-2025-gDOxUjMtQWa
 
----
-
-# 14. Major Technical Risks
-
-| Risk | Probability | Impact | Mitigation |
-|---|---:|---:|---|
-| Search results are noisy | High | Medium | Multiple queries + domain filtering |
-| AI hallucination | High | High | Evidence-grounded extraction |
-| Duplicate companies | High | Medium | Domain-based identity |
-| Stale company data | High | Medium | Retrieval timestamp + refresh |
-| Email unavailable | Medium | Medium | Hunter + generic company contact |
-| API rate limits | Medium | Medium | Queue + backoff + caching |
-| API provider changes | Medium | High | Provider abstraction |
-| Data licensing restrictions | Medium | High | Licensed APIs + legal review |
-| LinkedIn access restrictions | High | High | Do not scrape LinkedIn |
-| Research becomes expensive | Medium | High | Progressive enrichment |
-| Incorrect lead scoring | Medium | High | Explainable score + human review |
-| Personal-data compliance | Medium | High | Data minimization + privacy controls |
+This report is a technical feasibility assessment, **not legal advice**. Production launch should include an appropriate legal/privacy review.
 
 ---
 
-# 15. Build Difficulty
+# 20. LinkedIn and Restricted Sources
 
-### Overall MVP difficulty: **7/10**
+The architecture should **not depend on scraping websites whose terms prohibit the intended automated access**.
 
-Not because the individual APIs are difficult.
+In particular, LinkedIn's User Agreement and Crawling Terms should be reviewed before any automated collection is considered.
 
-The hard part is making the entire pipeline reliable.
+References:
 
-### Individual components
+- https://www.linkedin.com/legal/user-agreement
+- https://www.linkedin.com/legal/crawling-terms
 
-| Component | Difficulty |
-|---|---:|
-| ICP form | 2/10 |
-| Search integration | 3/10 |
-| Website extraction | 4/10 |
-| Company normalization | 5/10 |
-| Evidence storage | 4/10 |
-| AI extraction | 5/10 |
-| Lead scoring | 4/10 |
-| Email enrichment | 3/10 |
-| Dashboard | 5/10 |
-| Async pipeline | 6/10 |
-| Data quality | 8/10 |
-| Compliance/data licensing | 8/10 |
-
----
-
-# 16. Recommended MVP Scope
-
-## MUST HAVE
-
-- [ ] ICP input
-- [ ] Company discovery
-- [ ] Company deduplication
-- [ ] Website research
-- [ ] Evidence extraction
-- [ ] Explainable lead score
-- [ ] Ranked prospect list
-- [ ] Research brief
-- [ ] Email/contact enrichment for qualified prospects
-- [ ] Personalised outreach draft
-- [ ] Source URLs for every important claim
-
-## SHOULD HAVE
-
-- [ ] Job-posting signals
-- [ ] News/growth signals
-- [ ] Research caching
-- [ ] Export to CSV
-- [ ] Provider fallback
-- [ ] Refresh/re-research button
-
-## DO NOT BUILD YET
-
-- [ ] Automated cold-email sending
-- [ ] Email sequences
-- [ ] LinkedIn automation
-- [ ] CRM integrations
-- [ ] Autonomous browser agents
-- [ ] Huge proprietary lead database
-- [ ] Complex multi-agent architecture
-- [ ] Fine-tuned model
-- [ ] Custom vector database
-- [ ] Mobile application
-
-The product should prove **lead quality**, not automation breadth.
-
----
-
-# 17. Proposed Backend Architecture
+Recommended architecture:
 
 ```text
-                    ┌──────────────────┐
-                    │     Next.js      │
-                    │    Dashboard     │
-                    └────────┬─────────┘
-                             │
-                             ▼
-                    ┌──────────────────┐
-                    │    FastAPI       │
-                    │   API Gateway    │
-                    └────────┬─────────┘
-                             │
-             ┌───────────────┼────────────────┐
-             ▼               ▼                ▼
-       ┌──────────┐    ┌──────────┐    ┌────────────┐
-       │ Discovery│    │ Research │    │ Enrichment │
-       │ Service  │    │ Service  │    │  Service   │
-       └────┬─────┘    └────┬─────┘    └─────┬──────┘
-            │               │                 │
-            ▼               ▼                 ▼
-         Tavily          Tavily/Exa         Hunter
-         /Exa
-             \              |                /
-              \             |               /
-               └────────────┼───────────────┘
-                            ▼
-                    ┌──────────────────┐
-                    │  Qualification   │
-                    │   + Scoring      │
-                    └────────┬─────────┘
-                             │
-                             ▼
-                    ┌──────────────────┐
-                    │   PostgreSQL     │
-                    │ companies        │
-                    │ prospects        │
-                    │ evidence         │
-                    │ scores           │
-                    └──────────────────┘
+Licensed / permitted provider
+            ↓
+         Our API
+```
+
+rather than:
+
+```text
+Browser automation
+        ↓
+Unauthorized scraping
+        ↓
+Our database
+```
+
+This reduces both technical and legal risk.
+
+---
+
+# 21. Major Technical Risks
+
+| Risk | Probability | Impact | Mitigation |
+|---|---|---|---|
+| Poor search relevance | High | High | Multiple query strategies + evaluation |
+| AI hallucination | Medium/High | High | Evidence-grounded generation |
+| Duplicate companies | High | Medium | Domain-based identity |
+| Stale information | High | Medium | Retrieval timestamps |
+| Missing contact data | Medium | Medium | Multiple permitted providers |
+| API rate limits | Medium | Medium | Queue + backoff |
+| Provider outage | Medium | High | Provider abstraction |
+| Unexpected API cost | Medium | High | Progressive enrichment + budgets |
+| Data licensing restrictions | Medium | High | Provider/terms review |
+| Privacy risk | Medium | High | Data minimization + retention controls |
+| Weak lead ranking | High | High | Human-labelled validation set |
+
+---
+
+# 22. What We Should NOT Build in MVP
+
+To keep the project focused, defer:
+
+- Fully autonomous cold-email sending
+- Automated email sequences
+- LinkedIn automation
+- CRM integrations
+- Autonomous browser agents
+- Huge proprietary lead database
+- Fine-tuning a custom LLM
+- Complex multi-agent architecture
+- Mobile application
+- Automatic sales execution
+
+The MVP should prove **research and qualification quality** before expanding into sales automation.
+
+---
+
+# 23. MVP Implementation Plan
+
+## Phase 1 — Discovery
+
+Build:
+
+```text
+ICP input
+   ↓
+Structured ICP
+   ↓
+Search provider
+   ↓
+Company candidates
+```
+
+Goal:
+
+> Produce relevant candidate companies.
+
+---
+
+## Phase 2 — Research
+
+Build:
+
+```text
+Company
+   ↓
+Website / relevant pages
+   ↓
+Extract evidence
+   ↓
+Store evidence
+```
+
+Goal:
+
+> Every important qualification claim has a source.
+
+---
+
+## Phase 3 — Qualification
+
+Build:
+
+```text
+ICP + Evidence
+       ↓
+LLM extraction
+       ↓
+Qualification fields
+       ↓
+Explainable score
+```
+
+Goal:
+
+> Rank companies consistently and explain the ranking.
+
+---
+
+## Phase 4 — Enrichment
+
+For only the best candidates:
+
+```text
+Qualified company
+       ↓
+Contact search
+       ↓
+Email verification
+       ↓
+Contact record
+```
+
+Goal:
+
+> Determine whether useful contact information can be obtained reliably.
+
+---
+
+## Phase 5 — Outreach Draft
+
+```text
+Verified company evidence
+          +
+Verified contact role
+          ↓
+Personalised draft
+```
+
+Goal:
+
+> Generate a short outreach draft based only on evidence.
+
+The system should require human review before any outreach is sent.
+
+---
+
+# 24. Validation Experiment
+
+Before building the full product, create a labelled test set of **50 real companies** that match the intended ICP.
+
+Manually label each company:
+
+```text
+GOOD
+MAYBE
+BAD
+```
+
+Then run the automated pipeline.
+
+---
+
+## 24.1 Precision@10
+
+Measure:
+
+```text
+Good companies in top 10
+------------------------
+10
+```
+
+Example:
+
+```text
+7 good companies in top 10
+→ Precision@10 = 70%
 ```
 
 ---
 
-# 18. Suggested Repository Structure
+## 24.2 Evidence Accuracy
+
+For generated claims, label:
+
+```text
+Supported
+Partially Supported
+Unsupported
+```
+
+Target:
+
+```text
+≥ 90% of important claims supported by evidence
+```
+
+This is an internal MVP target, not an industry benchmark.
+
+---
+
+## 24.3 Contact Enrichment Success
+
+Measure:
+
+```text
+Valid useful contacts
+---------------------
+Contact requests
+```
+
+The team should track both successful and unsuccessful enrichment attempts.
+
+---
+
+## 24.4 Research Cost
+
+Track:
+
+```text
+Total provider + LLM cost
+-------------------------
+Qualified companies
+```
+
+This gives us:
+
+> Cost per qualified prospect.
+
+---
+
+## 24.5 Time Saved
+
+Compare:
+
+```text
+Average manual research time
+              vs.
+Average AI-assisted research time
+```
+
+The product should only be considered useful if it meaningfully reduces research effort without destroying lead quality.
+
+---
+
+# 25. Initial Success Criteria
+
+For the first prototype, use these as internal targets:
+
+| Metric | Initial Target |
+|---|---:|
+| Precision@10 | ≥ 70% |
+| Evidence-supported important claims | ≥ 90% |
+| Successful contact enrichment | ≥ 60% |
+| Manual research time reduction | ≥ 50% |
+| Duplicate company rate | < 5% |
+
+These targets are intended to guide our experiment. They are **not claims about industry-standard performance**.
+
+If the system fails primarily because of poor data quality, improve the retrieval/data pipeline before adding more AI features.
+
+---
+
+# 26. Repository Structure
+
+Recommended project structure:
 
 ```text
 .
@@ -977,198 +1190,132 @@ The product should prove **lead quality**, not automation breadth.
 │   └── db/
 │
 ├── tests/
-│   ├── discovery/
-│   ├── scoring/
-│   └── enrichment/
 │
 └── README.md
 ```
 
 ---
 
-# 19. Provider Abstraction
+# 27. Final Technical Verdict
 
-Do this from day one.
+## Feasibility: **YES**
 
-```text
-providers/
-├── search/
-│   ├── base.py
-│   ├── tavily.py
-│   └── exa.py
-│
-├── enrichment/
-│   ├── base.py
-│   └── hunter.py
-│
-└── public_data/
-    └── sec.py
-```
+The required building blocks are available:
 
-The application should not contain code like:
+| Capability | Feasibility |
+|---|---|
+| ICP parsing | High |
+| Company discovery | High |
+| Web research | High |
+| Evidence extraction | High |
+| AI qualification | High |
+| Explainable scoring | High |
+| Contact enrichment | High |
+| Dashboard | High |
+| Async processing | High |
+| Data quality | Medium |
+| Reliable ranking | Medium |
+| Cost control | Medium |
+| Data licensing/privacy | Medium |
 
-```python
-if tavily:
-    ...
-```
+### The product is technically feasible because:
 
-throughout the entire codebase.
+- We do not need to train a new foundation model.
+- We can use existing search and enrichment APIs.
+- We can use an LLM for structured extraction and reasoning.
+- Standard web/backend/database infrastructure is sufficient.
+- The architecture can be built incrementally.
 
-Instead:
+### The product is NOT automatically validated because:
 
-```python
-research_provider.search(...)
-```
+Technical feasibility does not prove that the system will produce good leads.
 
-This makes future provider replacement much easier.
-
----
-
-# 20. Validation Experiment Before Full Build
-
-Before implementing the entire product, run one controlled experiment.
-
-### Test set
-
-Take **50 real companies** from the target ICP.
-
-Have the team manually label:
-
-```text
-GOOD
-MAYBE
-BAD
-```
-
-Then run the automated pipeline.
-
-Measure:
-
-### Precision@10
-
-Of the top 10 AI-ranked prospects, how many are actually good?
-
-```text
-Precision@10 =
-good top-10 prospects / 10
-```
-
-### Evidence accuracy
-
-For each generated claim:
-
-```text
-Supported
-Unsupported
-Partially supported
-```
-
-### Contact success rate
-
-```text
-valid work emails / requested emails
-```
-
-### Research cost
-
-```text
-total API cost / qualified company
-```
-
-### Time saved
-
-Compare:
-
-```text
-manual research time
-vs
-AI-assisted research time
-```
-
-This experiment will tell us whether the product is actually useful.
+That requires the 50-company validation experiment.
 
 ---
 
-# 21. MVP Success Threshold
+# 28. Recommended MVP Decision
 
-For the first prototype, target:
+Proceed with the MVP, but keep the first implementation narrow:
 
 ```text
-≥ 70% Precision@10
-≥ 90% evidence-supported claims
-≥ 60% successful contact enrichment
-≥ 50% reduction in manual research time
+ICP
+ ↓
+Discover
+ ↓
+Research
+ ↓
+Evidence
+ ↓
+Qualify
+ ↓
+Rank
+ ↓
+Enrich top prospects
+ ↓
+Generate outreach draft
+ ↓
+Human review
 ```
 
-These are **internal engineering targets**, not guaranteed industry benchmarks.
+### Do not start with:
 
-If the system cannot hit these numbers on a controlled test set, adding more features is the wrong move.
+```text
+Find everyone
+ ↓
+Enrich everyone
+ ↓
+Email everyone
+```
 
-Fix data quality first.
+The first version should optimize for:
+
+> **Quality of qualified prospects + evidence + time saved**
+
+rather than volume.
 
 ---
 
-# 22. Final Technical Verdict
+# 29. Bottom Line
 
-## Can we build it?
+> **The Solutionists can realistically build the proposed AI Revenue / Sales Intelligence MVP using existing technology.**
 
-**Yes.**
+The key technical strategy is:
 
-The required building blocks already exist:
+**Retrieve → Verify → Structure → Score → Explain → Enrich → Draft**
 
-```text
-Company discovery       → available
-Web research            → available
-Website extraction      → available
-Contact enrichment      → available
-LLM qualification       → available
-Scoring                 → straightforward
-Database                → straightforward
-Dashboard               → straightforward
-```
+The largest risks are **data quality, provider constraints, cost, privacy/licensing, and ranking accuracy**, not the availability of AI technology.
 
-The difficult part is **data quality, evidence grounding, provider licensing, and cost control**, not AI model training.
+Therefore:
 
-### Recommended first implementation
-
-```text
-Tavily
-  +
-Hunter
-  +
-SEC/public sources where applicable
-  +
-GPT-5 mini
-  +
-PostgreSQL
-  +
-FastAPI
-  +
-Next.js
-```
-
-### Strategic principle
-
-> **Do not build a database of everyone. Build a system that explains why a small number of companies are worth talking to.**
-
-That is the strongest technical interpretation of the current Solutionists MVP hypothesis.
+> **Build the research-and-qualification engine first. Prove that it finds better prospects faster. Then expand into outreach automation and broader sales workflows.**
 
 ---
 
-# Sources
+## References
 
-- [Tavily Pricing](https://www.tavily.com/pricing)
-- [Tavily API Credits](https://docs.tavily.com/documentation/api-credits)
-- [Exa Pricing](https://exa.ai/pricing)
-- [Hunter API Documentation](https://hunter.io/api-documentation)
-- [Hunter API for Data Plans](https://help.hunter.io/en/articles/12149400-hunter-api-for-data-plans)
-- [Hunter Pricing](https://hunter.io/pricing)
-- [SEC EDGAR APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces)
-- [Google Maps India Pricing](https://developers.google.com/maps/billing-and-pricing/pricing-india)
-- [Apollo API Terms](https://www.apollo.io/terms/api)
-- [Apollo Developer FAQ](https://docs.apollo.io/docs/developer-faqs)
-- [Apollo API Pricing](https://docs.apollo.io/docs/api-pricing)
-- [LinkedIn User Agreement](https://www.linkedin.com/legal/user-agreement)
-- [LinkedIn Crawling Terms](https://www.linkedin.com/legal/crawling-terms)
-- [India DPDP Act, 2023](https://www.indiacode.nic.in/handle/123456789/22037)
-- [MeitY — DPDP Rules 2025](https://www.meity.gov.in/documents/act-and-policies/digital-personal-data-protection-rules-2025-gDOxUjMtQWa)
+### AI / LLM
+
+- OpenAI GPT-5 mini: https://developers.openai.com/api/docs/models/gpt-5-mini
+- OpenAI GPT-5 developer announcement: https://openai.com/index/introducing-gpt-5-for-developers/
+
+### Web Research
+
+- Tavily pricing: https://www.tavily.com/pricing
+- Tavily API documentation: https://docs.tavily.com/
+- Exa pricing: https://exa.ai/pricing
+
+### Contact Enrichment
+
+- Hunter pricing: https://hunter.io/pricing
+- Hunter API documentation: https://hunter.io/api-documentation
+
+### Public Company Data
+
+- SEC EDGAR APIs: https://www.sec.gov/search-filings/edgar-application-programming-interfaces
+
+### Data Access / Privacy
+
+- LinkedIn User Agreement: https://www.linkedin.com/legal/user-agreement
+- LinkedIn Crawling Terms: https://www.linkedin.com/legal/crawling-terms
+- MeitY — Digital Personal Data Protection Rules 2025: https://www.meity.gov.in/documents/act-and-policies/digital-personal-data-protection-rules-2025-gDOxUjMtQWa
