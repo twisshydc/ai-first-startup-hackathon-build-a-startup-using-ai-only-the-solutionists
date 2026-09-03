@@ -191,7 +191,7 @@ pytest
 |---|---|
 | Aayush | Team Lead |
 | Adarsh | Team Member |
-| Wali | Team Member |
+| Trish | Team Member |
 | Varun | Team Member |
 | Srikar | Team Member |
 | Harshith | Team Member |
